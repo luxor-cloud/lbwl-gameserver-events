@@ -18,8 +18,8 @@ type Handler interface {
 }
 
 type GameserverHandler struct {
-	mu        *sync.RWMutex
-	consumers map[string][]*Consumer
+	mu        *sync.Mutex
+	consumers map[string]map[types.UID]*Consumer
 }
 
 func (gh *GameserverHandler) OnAdd(obj interface{}) {
@@ -35,7 +35,7 @@ func (gh *GameserverHandler) OnDelete(obj interface{}) {
 }
 
 type PodHandler struct {
-	mu             *sync.RWMutex
+	mu             *sync.Mutex
 	consumerPerPod map[types.UID]Consumer
 	consumers      map[string]map[types.UID]*Consumer
 	labelsPerPod   map[types.UID][]string
@@ -123,6 +123,9 @@ func (ph PodHandler) invalidPod(obj v1.Object) bool {
 }
 
 func (ph *PodHandler) free(pod v1.Object) {
+	ph.mu.Lock()
+	defer ph.mu.Unlock()
+
 	log.Println(fmt.Sprintf("Deassociating all consumers for pod %s."))
 	delete(ph.consumerPerPod, pod.GetUID())
 	for _, label := range ph.labelsPerPod[pod.GetUID()] {
