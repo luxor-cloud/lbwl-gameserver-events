@@ -44,6 +44,7 @@ type PodHandler struct {
 
 func (ph *PodHandler) OnAdd(obj interface{}) {
 	pod := obj.(v1.Object)
+	uid := pod.GetUID()
 	annotations := pod.GetAnnotations()
 
 	if ph.invalidPod(pod) {
@@ -63,17 +64,18 @@ func (ph *PodHandler) OnAdd(obj interface{}) {
 		ph.client,
 	}
 
-	ph.labelsPerPod[pod.GetUID()] = list
-	ph.consumerPerPod[pod.GetUID()] = consumer
+	ph.labelsPerPod[uid] = list
+	ph.consumerPerPod[uid] = consumer
 
 	for _, label := range list {
-		ph.consumers[label][pod.GetUID()] = &consumer
+		ph.consumers[label][uid] = &consumer
 	}
 }
 
 func (ph *PodHandler) OnUpdate(old, new interface{}) {
 	oldPod := old.(v1.Object)
 	newPod := new.(v1.Object)
+	uid := oldPod.GetUID()
 
 	if ph.invalidPod(oldPod) {
 		return
@@ -87,22 +89,22 @@ func (ph *PodHandler) OnUpdate(old, new interface{}) {
 	list := strings.Split(newPod.GetAnnotations()["freggy.dev/gameserver-events"], ",")
 	defer func() {
 		// update new labels
-		ph.labelsPerPod[oldPod.GetUID()] = list
+		ph.labelsPerPod[uid] = list
 	}()
 
 	for _, label := range list {
 		// if the label is not contained in the new list BUT there is currently a consumer
 		// associated for that label we know it has been removed so deassociate the consumer from the specifc label
-		if !containsString(ph.labelsPerPod[oldPod.GetUID()], label) && ph.consumers[label][oldPod.GetUID()] != nil {
-			delete(ph.consumers[label], oldPod.GetUID())
+		if !containsString(ph.labelsPerPod[uid], label) && ph.consumers[label][uid] != nil {
+			delete(ph.consumers[label], uid)
 			return
 		}
 
 		// The label is NOT contained in the current label pool and NO consumer is associated with it
 		// this means that the label has been newly added -> associate consumer
-		if !containsString(ph.labelsPerPod[oldPod.GetUID()], label) && ph.consumers[label][oldPod.GetUID()] == nil {
-			consumer := ph.consumerPerPod[oldPod.GetUID()]
-			ph.consumers[label][oldPod.GetUID()] = &consumer
+		if !containsString(ph.labelsPerPod[uid], label) && ph.consumers[label][uid] == nil {
+			consumer := ph.consumerPerPod[uid]
+			ph.consumers[label][uid] = &consumer
 			return
 		}
 	}
@@ -123,16 +125,18 @@ func (ph PodHandler) invalidPod(obj v1.Object) bool {
 }
 
 func (ph *PodHandler) free(pod v1.Object) {
+	uid := pod.GetUID()
+
 	ph.mu.Lock()
 	defer ph.mu.Unlock()
 
 	log.Println(fmt.Sprintf("Deassociating all consumers for pod %s."))
-	delete(ph.consumerPerPod, pod.GetUID())
-	for _, label := range ph.labelsPerPod[pod.GetUID()] {
+	delete(ph.consumerPerPod, uid)
+	for _, label := range ph.labelsPerPod[uid] {
 		log.Println(fmt.Sprintf("Deassociating label %s from pod %s.", label, pod.GetName()))
-		delete(ph.consumers[label], pod.GetUID())
+		delete(ph.consumers[label], uid)
 	}
-	delete(ph.labelsPerPod, pod.GetUID())
+	delete(ph.labelsPerPod, uid)
 }
 
 func containsString(slice []string, item string) bool {

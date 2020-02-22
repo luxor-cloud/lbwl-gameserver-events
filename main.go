@@ -26,12 +26,6 @@ func main() {
 	if err != nil {
 		log.Panic(err.Error())
 	}
-
-	kclient, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Panic(err.Error())
-	}
-
 }
 
 func createGameserverInformer(client dynamic.Interface, namespace string, handler cache.ResourceEventHandler) cache.SharedIndexInformer {
